@@ -420,7 +420,7 @@
         /* 網格排程表 */
         .schedule-grid {
             display: grid;
-            grid-template-columns: 50px 2fr 1fr 1fr 1.5fr;
+            grid-template-columns: 40px 2fr 1fr 1fr 1.5fr 30px; /* 增加一欄給刪除按鈕 */
             gap: 10px; align-items: center;
             margin-bottom: 10px; padding: 10px;
             background: var(--bg-sub); border-radius: 8px; border: 1px solid var(--border);
@@ -428,6 +428,20 @@
         .schedule-grid.header { background: var(--primary); color: #ffffff; font-weight: 500; padding: 12px 10px; border: none;}
         .row-num { text-align: center; font-weight: 700; color: var(--text-muted); }
         input[type="file"] { font-size: 0.85rem; padding: 0.4rem; background: var(--white); border: 1px solid var(--border); border-radius: 6px; width: 100%; color: var(--dark);}
+
+        /* 新增 / 刪除節次按鈕 */
+        .btn-add-row {
+            width: 100%; padding: 10px; background: transparent; border: 1px dashed var(--text-muted);
+            color: var(--text-muted); border-radius: 8px; cursor: pointer; font-weight: bold;
+            transition: all 0.2s; margin-bottom: 10px;
+        }
+        .btn-add-row:hover { background: var(--capsule-bg); border-color: var(--primary-light); color: var(--primary); }
+        
+        .btn-delete-row {
+            background: transparent; border: none; color: var(--danger); font-size: 1.2rem;
+            cursor: pointer; opacity: 0.5; transition: opacity 0.2s; padding: 0; display: flex; align-items: center; justify-content: center;
+        }
+        .btn-delete-row:hover { opacity: 1; transform: scale(1.1); }
 
         /* 雙欄設定區 */
         .split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
@@ -586,11 +600,14 @@
                 <div>開始時間</div>
                 <div>結束時間</div>
                 <div>語音檔 (選填)</div>
+                <div></div> <!-- 刪除按鈕的標題空間 -->
             </div>
 
             <div id="schedule-inputs-container">
-                <!-- 由 JS 動態產生 4 列輸入框 -->
+                <!-- 由 JS 動態產生輸入框 -->
             </div>
+            
+            <button type="button" class="btn-add-row" onclick="UI.addScheduleRow()">➕ 新增一節考試</button>
 
             <!-- 註記輸入區 -->
             <div class="form-group" style="margin-top: 1.5rem; background: var(--bg-sub); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border);">
@@ -601,6 +618,7 @@
                     <button type="button" class="btn-quick-note" onclick="Logic.appendNote('🚫 本節考試禁止使用計算機及任何電子設備。')">禁用計算機</button>
                     <button type="button" class="btn-quick-note" onclick="Logic.appendNote('📱 請將手機關機，並連同穿戴式裝置放置於教室前後。')">手機關機</button>
                     <button type="button" class="btn-quick-note" onclick="Logic.appendNote('⏳ 距離考試結束剩下最後 10 分鐘。')">剩餘 10 分鐘</button>
+                    <button type="button" class="btn-quick-note" onclick="Logic.appendNote('📝 提醒：考卷請寫上班級、姓名、座號。')">提醒寫姓名</button>
                     <button type="button" class="btn-preset clear" onclick="document.getElementById('input-note').value=''">🧹 清空內容</button>
                 </div>
 
@@ -642,10 +660,11 @@
         const appState = {
             isLocked: false,
             password: "1234",
-            note: "", // 儲存註記文字
+            note: "", 
             stats: { total: 0, present: 0, absent: 0 },
-            schedule: [], // 存放解析後的排程物件 {name, startMin, endMin, startStr, endStr, audioUrl}
-            tempAudioFiles: [null, null, null, null] // 暫存使用者選擇的檔案
+            schedule: [],
+            scheduleRowCount: 0, // 追蹤目前有幾列輸入框
+            tempAudioFiles: [] // 暫存使用者選擇的檔案 (動態長度)
         };
 
         /**
@@ -689,31 +708,68 @@
             toastTimer: null,
 
             initInputs() {
-                let html = '';
+                DOM.scheduleContainer.innerHTML = '';
+                appState.scheduleRowCount = 0;
+                appState.tempAudioFiles = [];
+                // 預設產生 4 節
                 for (let i = 0; i < 4; i++) {
-                    html += `
-                        <div class="schedule-grid">
-                            <div class="row-num">${i + 1}</div>
-                            <input type="text" class="sub-name" placeholder="例如：國文">
-                            <input type="time" class="sub-start">
-                            <input type="time" class="sub-end">
-                            <input type="file" class="sub-audio" accept="audio/*" data-index="${i}">
-                        </div>
-                    `;
+                    this.addScheduleRow();
                 }
-                DOM.scheduleContainer.innerHTML = html;
+            },
 
-                document.querySelectorAll('.sub-audio').forEach(input => {
-                    input.addEventListener('change', (e) => {
-                        const index = e.target.dataset.index;
-                        const file = e.target.files[0];
-                        if (file) {
-                            appState.tempAudioFiles[index] = file;
-                        } else {
-                            appState.tempAudioFiles[index] = null;
-                        }
-                    });
+            addScheduleRow() {
+                const index = appState.scheduleRowCount;
+                const row = document.createElement('div');
+                row.className = 'schedule-grid';
+                row.innerHTML = `
+                    <div class="row-num">${index + 1}</div>
+                    <input type="text" class="sub-name" placeholder="例如：國文">
+                    <input type="time" class="sub-start">
+                    <input type="time" class="sub-end">
+                    <input type="file" class="sub-audio" accept="audio/*" data-index="${index}">
+                    <button type="button" class="btn-delete-row" title="刪除此節" onclick="UI.removeScheduleRow(this)">🗑️</button>
+                `;
+                
+                // 綁定檔案上傳事件
+                const fileInput = row.querySelector('.sub-audio');
+                fileInput.addEventListener('change', (e) => {
+                    const idx = e.target.dataset.index;
+                    const file = e.target.files[0];
+                    appState.tempAudioFiles[idx] = file || null;
                 });
+
+                DOM.scheduleContainer.appendChild(row);
+                appState.scheduleRowCount++;
+                appState.tempAudioFiles.push(null);
+                this.updateRowNumbers();
+            },
+
+            removeScheduleRow(btn) {
+                if (appState.scheduleRowCount <= 1) {
+                    this.showToast("⚠️ 至少需要保留一節考試");
+                    return;
+                }
+                const row = btn.closest('.schedule-grid');
+                row.remove();
+                this.updateRowNumbers();
+            },
+
+            updateRowNumbers() {
+                const rows = DOM.scheduleContainer.querySelectorAll('.schedule-grid');
+                const newAudioFiles = [];
+                
+                rows.forEach((row, i) => {
+                    row.querySelector('.row-num').textContent = i + 1;
+                    const fileInput = row.querySelector('.sub-audio');
+                    const oldIndex = parseInt(fileInput.dataset.index);
+                    fileInput.dataset.index = i;
+                    
+                    // 保留舊有的音檔參照
+                    newAudioFiles[i] = appState.tempAudioFiles[oldIndex] || null;
+                });
+                
+                appState.tempAudioFiles = newAudioFiles;
+                appState.scheduleRowCount = rows.length;
             },
 
             updateClock(now) {
@@ -858,14 +914,31 @@
             },
 
             applyPreset(type) {
+                if (type === 'clear') {
+                    const names = document.querySelectorAll('.sub-name');
+                    const starts = document.querySelectorAll('.sub-start');
+                    const ends = document.querySelectorAll('.sub-end');
+                    for (let i = 0; i < names.length; i++) {
+                        names[i].value = ""; starts[i].value = ""; ends[i].value = "";
+                    }
+                    return;
+                }
+
+                // 確定預設考程需要的節數
+                const requiredRows = (type === 'day1') ? 3 : 2;
+                
+                // 如果目前行數不夠，自動補足
+                while (appState.scheduleRowCount < requiredRows) {
+                    UI.addScheduleRow();
+                }
+
                 const names = document.querySelectorAll('.sub-name');
                 const starts = document.querySelectorAll('.sub-start');
                 const ends = document.querySelectorAll('.sub-end');
                 
-                for (let i = 0; i < 4; i++) {
-                    names[i].value = "";
-                    starts[i].value = "";
-                    ends[i].value = "";
+                // 先清空所有欄位
+                for (let i = 0; i < names.length; i++) {
+                    names[i].value = ""; starts[i].value = ""; ends[i].value = "";
                 }
 
                 if (type === 'day1') {
@@ -907,7 +980,7 @@
                 const starts = document.querySelectorAll('.sub-start');
                 const ends = document.querySelectorAll('.sub-end');
 
-                for (let i = 0; i < 4; i++) {
+                for (let i = 0; i < names.length; i++) {
                     const name = names[i].value.trim();
                     const startStr = starts[i].value;
                     const endStr = ends[i].value;
